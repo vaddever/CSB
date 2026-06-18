@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Karaoke Vote</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Work+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="firebase-config.js"></script>
+<style>
+  body { background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255,77,141,0.12), transparent 60%), var(--bg); }
+  .stage { max-width: 480px; margin: 0 auto; padding: 30px 18px 80px; }
+  .head .display { font-size: 26px; color: var(--pink); text-align:center; }
+  .center-msg { text-align: center; padding: 70px 10px; }
+  .center-msg .display { font-size: 28px; color: var(--pink); margin-bottom: 8px; }
+  .pair-names { text-align:center; font-size: 26px; margin: 18px 0 4px; }
+  .song { text-align:center; color: var(--text-muted); margin-bottom: 26px; }
+  .slider-block { margin-bottom: 26px; }
+  .slider-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 8px; }
+  .slider-head .val { font-family: var(--font-mono); font-size: 22px; color: var(--pink); }
+  input[type=range] {
+    -webkit-appearance: none; width: 100%; height: 8px; border-radius: 6px;
+    background: var(--surface-2);
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 28px; height: 28px; border-radius: 50%;
+    background: var(--pink); cursor: pointer; border: 3px solid var(--bg);
+  }
+  .thanks { text-align:center; }
+  .thanks .display { font-size: 26px; color: var(--pink); }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="head"><div class="display">JUDGE THE PAIR</div></div>
+
+  <div id="screen-noauth" class="center-msg" style="display:none;">
+    <div class="display">No pass yet</div>
+    <p class="muted">Register at the entrance first.</p>
+    <a href="register.html" class="btn btn-pink" style="display:inline-block; margin-top:14px;">Go to registration</a>
+  </div>
+
+  <div id="screen-waiting" class="center-msg" style="display:none;">
+    <div class="display">Waiting…</div>
+    <p class="muted">No one's on stage right now. Hang on to your scorecard.</p>
+  </div>
+
+  <div id="screen-performer" class="center-msg" style="display:none;">
+    <div class="display">You're up!</div>
+    <p class="muted">Go give it your all — the crowd's judging this one.</p>
+  </div>
+
+  <div id="screen-vote" style="display:none;">
+    <div class="card">
+      <div class="pair-names" id="pairNames">— &amp; —</div>
+      <div class="song" id="pairSong">—</div>
+
+      <div class="slider-block">
+        <div class="slider-head"><span>Performance</span><span class="val" id="perfVal">5</span></div>
+        <input type="range" min="1" max="10" value="5" id="perfSlider" />
+      </div>
+      <div class="slider-block">
+        <div class="slider-head"><span>Singing</span><span class="val" id="singVal">5</span></div>
+        <input type="range" min="1" max="10" value="5" id="singSlider" />
+      </div>
+      <button class="btn btn-pink btn-block" id="submitVote">Submit score</button>
+    </div>
+  </div>
+
+  <div id="screen-voted" class="thanks" style="display:none;">
+    <div class="display">Scored! 🎤</div>
+    <p class="muted">Thanks — your vote's in for this pair.</p>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const app = initializeApp(window.FIREBASE_CONFIG);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+function show(id) {
+  ["screen-noauth","screen-waiting","screen-performer","screen-vote","screen-voted"].forEach(s => {
+    document.getElementById(s).style.display = (s === id) ? "block" : "none";
+  });
+}
+
+async function ensureAuth() {
+  return new Promise(resolve => {
+    onAuthStateChanged(auth, user => {
+      if (user) resolve(user);
+      else signInAnonymously(auth).catch(console.error);
+    });
+  });
+}
+
+const attendeeId = localStorage.getItem("attendeeId");
+let currentPairId = null;
+
+document.getElementById("perfSlider").addEventListener("input", e => {
+  document.getElementById("perfVal").textContent = e.target.value;
+});
+document.getElementById("singSlider").addEventListener("input", e => {
+  document.getElementById("singVal").textContent = e.target.value;
+});
+
+document.getElementById("submitVote").addEventListener("click", async () => {
+  if (!currentPairId || !attendeeId) return;
+  const btn = document.getElementById("submitVote");
+  btn.disabled = true;
+  const performance = Number(document.getElementById("perfSlider").value);
+  const singing = Number(document.getElementById("singSlider").value);
+  try {
+    await setDoc(doc(db, "karaoke_votes", currentPairId + "_" + attendeeId), {
+      pairId: currentPairId, voterId: attendeeId,
+      performance, singing,
+      votedAt: Date.now()
+    });
+    show("screen-voted");
+  } catch (e) {
+    console.error(e);
+    btn.disabled = false;
+  }
+});
+
+async function checkPair(pairId) {
+  const pairSnap = await getDoc(doc(db, "karaoke_pairs", pairId));
+  if (!pairSnap.exists()) { show("screen-waiting"); return; }
+  const pair = pairSnap.data();
+
+  if (attendeeId === pair.maleId || attendeeId === pair.femaleId) {
+    show("screen-performer");
+    return;
+  }
+
+  const voteSnap = await getDoc(doc(db, "karaoke_votes", pairId + "_" + attendeeId));
+  if (voteSnap.exists()) { show("screen-voted"); return; }
+
+  document.getElementById("pairNames").textContent = `${pair.maleName} & ${pair.femaleName}`;
+  document.getElementById("pairSong").textContent = pair.song || "Song to be announced";
+  document.getElementById("perfSlider").value = 5;
+  document.getElementById("singSlider").value = 5;
+  document.getElementById("perfVal").textContent = 5;
+  document.getElementById("singVal").textContent = 5;
+  document.getElementById("submitVote").disabled = false;
+  show("screen-vote");
+}
+
+async function setup() {
+  await ensureAuth();
+  if (!attendeeId) { show("screen-noauth"); return; }
+  const attSnap = await getDoc(doc(db, "attendees", attendeeId));
+  if (!attSnap.exists()) { show("screen-noauth"); return; }
+
+  onSnapshot(doc(db, "state", "karaoke"), snap => {
+    if (!snap.exists()) { show("screen-waiting"); return; }
+    const s = snap.data();
+    if (s.phase !== "performing" || !s.currentPairId) { show("screen-waiting"); return; }
+    if (s.currentPairId !== currentPairId) {
+      currentPairId = s.currentPairId;
+      checkPair(currentPairId);
+    }
+  });
+}
+
+setup();
+</script>
+</body>
+</html>

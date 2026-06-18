@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Quiz</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Work+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="firebase-config.js"></script>
+<style>
+  body { background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(54,214,197,0.12), transparent 60%), var(--bg); }
+  .stage { max-width: 480px; margin: 0 auto; padding: 30px 18px 80px; }
+  .head { display:flex; justify-content:space-between; align-items:center; margin-bottom: 18px; }
+  .head .display { font-size: 26px; color: var(--teal); }
+  .score-pill { font-family: var(--font-mono); font-size: 13px; background: var(--surface-2); padding: 6px 12px; border-radius: 100px; }
+  .timer-ring { width: 64px; height: 64px; margin: 0 auto 18px; position: relative; }
+  .timer-ring svg { transform: rotate(-90deg); }
+  .timer-ring circle { fill: none; stroke-width: 6; }
+  .timer-ring .bg { stroke: var(--surface-2); }
+  .timer-ring .fg { stroke: var(--teal); stroke-linecap: round; transition: stroke-dashoffset 0.2s linear; }
+  .timer-num { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family: var(--font-mono); font-size:18px; }
+  .qtext { font-size: 22px; text-align: center; margin: 6px 0 22px; line-height: 1.3; }
+  .opt {
+    display: block; width: 100%; text-align: left; padding: 16px 18px; margin-bottom: 10px;
+    border-radius: 12px; font-size: 16px; background: var(--surface); border: 1px solid var(--border);
+  }
+  .opt.selected { border-color: var(--teal); background: var(--teal-dim); }
+  .opt.correct { border-color: var(--teal); background: var(--teal-dim); }
+  .opt.wrong { border-color: var(--red); opacity: 0.6; }
+  .center-msg { text-align: center; padding: 60px 10px; }
+  .center-msg .display { font-size: 30px; color: var(--teal); margin-bottom: 8px; }
+  .result-badge { text-align:center; font-size: 17px; margin-bottom: 6px; }
+  .leader { margin-top: 24px; }
+  .leader li { display:flex; justify-content:space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .leader li:first-child { color: var(--gold); }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="head">
+    <div class="display">QUIZ</div>
+    <div class="score-pill" id="scorePill">— pts</div>
+  </div>
+
+  <div id="screen-noauth" class="center-msg" style="display:none;">
+    <div class="display">No pass yet</div>
+    <p class="muted">Register at the entrance first to get your event pass.</p>
+    <a href="register.html" class="btn btn-teal" style="display:inline-block; margin-top:14px;">Go to registration</a>
+  </div>
+
+  <div id="screen-idle" class="center-msg" style="display:none;">
+    <div class="display">Hang tight</div>
+    <p class="muted" id="idleMsg">The quiz hasn't started yet. This screen will spring to life the moment it does.</p>
+  </div>
+
+  <div id="screen-question" style="display:none;">
+    <div class="timer-ring">
+      <svg width="64" height="64">
+        <circle class="bg" cx="32" cy="32" r="27"></circle>
+        <circle class="fg" id="ringFg" cx="32" cy="32" r="27" stroke-dasharray="170" stroke-dashoffset="0"></circle>
+      </svg>
+      <div class="timer-num" id="timerNum">--</div>
+    </div>
+    <div class="eyebrow" style="text-align:center; margin-bottom:6px;" id="batchLabel">QUESTION</div>
+    <div class="qtext" id="qtext">—</div>
+    <div id="options"></div>
+    <p class="muted" id="lockedMsg" style="text-align:center; display:none;">Answer locked in — waiting for everyone else…</p>
+  </div>
+
+  <div id="screen-result" class="center-msg" style="display:none;">
+    <div class="result-badge" id="resultBadge">—</div>
+    <p class="muted" id="resultDetail"></p>
+  </div>
+
+  <div id="screen-finished" class="center-msg" style="display:none;">
+    <div class="display">Final scores</div>
+    <ul class="leader" id="finalLeaderboard" style="text-align:left; list-style:none; padding:0;"></ul>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, query, orderBy, limit, getDocs, increment, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const app = initializeApp(window.FIREBASE_CONFIG);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+function show(id) {
+  ["screen-noauth","screen-idle","screen-question","screen-result","screen-finished"].forEach(s => {
+    document.getElementById(s).style.display = (s === id) ? "block" : "none";
+  });
+}
+
+async function ensureAuth() {
+  return new Promise(resolve => {
+    onAuthStateChanged(auth, user => {
+      if (user) resolve(user);
+      else signInAnonymously(auth).catch(console.error);
+    });
+  });
+}
+
+const attendeeId = localStorage.getItem("attendeeId");
+let myName = "";
+let answeredQuestionId = null;
+let questionStartedAtMs = null;
+let durationMs = 0;
+let countdownInterval = null;
+
+async function setup() {
+  await ensureAuth();
+  if (!attendeeId) { show("screen-noauth"); return; }
+
+  const attSnap = await getDoc(doc(db, "attendees", attendeeId));
+  if (!attSnap.exists()) { show("screen-noauth"); return; }
+  myName = attSnap.data().name;
+
+  // auto-join the quiz if not already
+  const qpRef = doc(db, "quiz_participants", attendeeId);
+  const qpSnap = await getDoc(qpRef);
+  if (!qpSnap.exists()) {
+    await setDoc(qpRef, { attendeeId, name: myName, totalScore: 0 });
+  }
+
+  onSnapshot(qpRef, snap => {
+    if (snap.exists()) {
+      document.getElementById("scorePill").textContent = (snap.data().totalScore || 0) + " pts";
+    }
+  });
+
+  onSnapshot(doc(db, "state", "quiz"), async (snap) => {
+    if (!snap.exists()) { show("screen-idle"); return; }
+    const s = snap.data();
+    if (s.status === "finished") {
+      await renderFinal();
+      show("screen-finished");
+      return;
+    }
+    if (s.status === "lobby" || s.status === "idle" || !s.currentQuestionId) {
+      document.getElementById("idleMsg").textContent = s.status === "lobby"
+        ? "Get ready — the first question is coming up!"
+        : "The quiz hasn't started yet. This screen will spring to life the moment it does.";
+      show("screen-idle");
+      stopCountdown();
+      return;
+    }
+    if (s.status === "running") {
+      await renderQuestion(s);
+      return;
+    }
+    if (s.status === "question_ended") {
+      await renderResult(s);
+      return;
+    }
+  });
+}
+
+async function renderQuestion(s) {
+  const qSnap = await getDoc(doc(db, "quiz_questions", s.currentQuestionId));
+  if (!qSnap.exists()) return;
+  const q = qSnap.data();
+
+  document.getElementById("batchLabel").textContent = "QUESTION " + ((s.batchNumber || 0));
+  document.getElementById("qtext").textContent = q.text;
+
+  const startedAtMs = s.questionStartedAtMs || Date.now();
+  durationMs = (s.durationSec || 15) * 1000;
+  questionStartedAtMs = startedAtMs;
+
+  const optsEl = document.getElementById("options");
+  const alreadyAnswered = answeredQuestionId === s.currentQuestionId;
+
+  if (!alreadyAnswered) {
+    optsEl.innerHTML = "";
+    q.options.forEach((opt, idx) => {
+      const b = document.createElement("button");
+      b.className = "opt";
+      b.textContent = opt;
+      b.addEventListener("click", () => submitAnswer(s.currentQuestionId, idx, startedAtMs));
+      optsEl.appendChild(b);
+    });
+    document.getElementById("lockedMsg").style.display = "none";
+    optsEl.style.display = "block";
+  }
+
+  show("screen-question");
+  startCountdown(startedAtMs, durationMs);
+}
+
+function startCountdown(startedAtMs, durMs) {
+  stopCountdown();
+  const ring = document.getElementById("ringFg");
+  const circumference = 170;
+  ring.setAttribute("stroke-dasharray", circumference);
+
+  function tick() {
+    const elapsed = Date.now() - startedAtMs;
+    const remaining = Math.max(0, durMs - elapsed);
+    const pct = Math.max(0, Math.min(1, remaining / durMs));
+    ring.setAttribute("stroke-dashoffset", String(circumference * (1 - pct)));
+    document.getElementById("timerNum").textContent = Math.ceil(remaining / 1000);
+    if (remaining <= 0) stopCountdown();
+  }
+  tick();
+  countdownInterval = setInterval(tick, 150);
+}
+function stopCountdown() {
+  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+}
+
+async function submitAnswer(questionId, selectedIndex, startedAtMs) {
+  if (answeredQuestionId === questionId) return;
+  answeredQuestionId = questionId;
+
+  document.querySelectorAll(".opt").forEach((btn, idx) => {
+    btn.disabled = true;
+    if (idx === selectedIndex) btn.classList.add("selected");
+  });
+  document.getElementById("lockedMsg").style.display = "block";
+
+  const answerId = questionId + "_" + attendeeId;
+  try {
+    await setDoc(doc(db, "quiz_answers", answerId), {
+      questionId, attendeeId, name: myName,
+      selectedIndex,
+      answeredAtClientMs: Date.now(),
+      clientTimeTakenMs: Date.now() - startedAtMs,
+      answeredAtServer: serverTimestamp()
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function renderResult(s) {
+  stopCountdown();
+  const qSnap = await getDoc(doc(db, "quiz_questions", s.currentQuestionId));
+  const q = qSnap.exists() ? qSnap.data() : null;
+  const myAnswerSnap = await getDoc(doc(db, "quiz_answers", s.currentQuestionId + "_" + attendeeId));
+
+  let badge = "No answer recorded";
+  let detail = "";
+  if (q && myAnswerSnap.exists()) {
+    const correct = myAnswerSnap.data().selectedIndex === q.correctIndex;
+    badge = correct ? "✅ Correct!" : "❌ Not quite";
+    if (s.lastResult) {
+      detail = s.lastResult.fastestName
+        ? `Fastest correct answer: ${s.lastResult.fastestName} (${(s.lastResult.fastestTimeMs/1000).toFixed(1)}s)`
+        : "";
+    }
+  } else if (q) {
+    badge = "⏱ Time's up";
+    detail = `Correct answer: ${q.options[q.correctIndex]}`;
+  }
+  document.getElementById("resultBadge").textContent = badge;
+  document.getElementById("resultDetail").textContent = detail;
+  show("screen-result");
+}
+
+async function renderFinal() {
+  const qs = query(collection(db, "quiz_participants"), orderBy("totalScore", "desc"), limit(10));
+  const snap = await getDocs(qs);
+  const list = document.getElementById("finalLeaderboard");
+  list.innerHTML = "";
+  let rank = 1;
+  snap.forEach(d => {
+    const data = d.data();
+    const li = document.createElement("li");
+    li.innerHTML = `<span>#${rank} ${data.name}${d.id === attendeeId ? " (you)" : ""}</span><span class="mono">${data.totalScore || 0}</span>`;
+    list.appendChild(li);
+    rank++;
+  });
+}
+
+setup();
+</script>
+</body>
+</html>

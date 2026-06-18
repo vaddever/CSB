@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Event Check-In</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Work+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="firebase-config.js"></script>
+<style>
+  .stage { max-width: 460px; margin: 0 auto; padding: 40px 20px 80px; }
+  .logo { text-align: center; margin-bottom: 28px; }
+  .logo .display { font-size: 38px; color: var(--gold); }
+  .logo .eyebrow { margin-top: 4px; }
+  .step { display: none; }
+  .step.active { display: block; }
+  .qr-box { background: #fff; padding: 18px; border-radius: 12px; display: inline-block; }
+  .pass { text-align: center; }
+  .pass .display { font-size: 30px; margin: 18px 0 4px; }
+  .pill-row { display: flex; gap: 10px; margin-top: 18px; }
+  .pill-row button { flex: 1; }
+  .gender-pick { display: flex; gap: 10px; margin-top: 10px; }
+  .gender-pick button { flex: 1; padding: 20px; font-size: 16px; }
+  .gender-pick button.selected.male { background: var(--teal); color: #002b26; }
+  .gender-pick button.selected.female { background: var(--pink); color: #2a0010; }
+  .joined-tag { display:inline-flex; align-items:center; gap:6px; color: var(--teal); font-size: 13px; font-family: var(--font-mono); margin-top: 10px; }
+  .joined-tag::before { content: "✓"; }
+  .checkin-flash {
+    text-align:center; padding: 10px 0 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="logo">
+    <div class="display" id="eventName">Event Check-In</div>
+    <div class="eyebrow">Staff Night Registration</div>
+  </div>
+
+  <!-- STEP 1: registration form -->
+  <div class="step active" id="step-form">
+    <div class="card">
+      <h2 style="font-size:20px; margin-bottom:4px;">Welcome 👋</h2>
+      <p class="muted" style="margin:0 0 4px; font-size:14px;">Fill this in once — you'll get a pass that works for check-in, karaoke and the quiz.</p>
+
+      <label for="staffId">Staff ID</label>
+      <input id="staffId" type="text" autocomplete="off" placeholder="e.g. ST-1042" />
+
+      <label for="name">Full name</label>
+      <input id="name" type="text" autocomplete="off" placeholder="e.g. Aisha Hassan" />
+
+      <label for="contact">Contact number</label>
+      <input id="contact" type="tel" autocomplete="off" placeholder="e.g. 7712345" />
+
+      <button class="btn btn-gold btn-block" style="margin-top:22px;" id="submitBtn">Check in</button>
+      <p class="muted" id="formError" style="font-size:13px; margin-top:10px; min-height:1px;"></p>
+    </div>
+  </div>
+
+  <!-- STEP 2: pass + activity opt-ins -->
+  <div class="step" id="step-pass">
+    <div class="card pass">
+      <div class="badge live" style="margin-bottom:8px;">CHECKED IN</div>
+      <div class="display" id="passName">—</div>
+      <div class="muted mono" id="passStaffId" style="font-size:13px;">—</div>
+      <div style="margin-top:18px;">
+        <div class="qr-box"><div id="qrcode"></div></div>
+      </div>
+      <p class="muted" style="font-size:12px; margin-top:14px;">This is your event pass. Keep this page open or screenshot the code.</p>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <div class="eyebrow" style="margin-bottom:10px;">Karaoke night</div>
+      <div id="karaokeJoined" style="display:none;">
+        <p style="margin:0;">You're in! Watch the big screen for your pairing &amp; song.</p>
+        <div class="joined-tag" id="karaokeGenderTag"></div>
+      </div>
+      <div id="karaokeForm">
+        <p class="muted" style="font-size:14px; margin:0 0 8px;">Join the lineup — we pair one guy with one girl and assign you a song.</p>
+        <div class="gender-pick">
+          <button id="pickMale" class="btn">🕺 Male</button>
+          <button id="pickFemale" class="btn">💃 Female</button>
+        </div>
+        <button class="btn btn-pink btn-block" id="joinKaraokeBtn" style="margin-top:12px;" disabled>Select a gender to join</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <div class="eyebrow" style="margin-bottom:10px;">Fun quiz</div>
+      <div id="quizJoined" style="display:none;">
+        <p style="margin:0;">You're in the quiz! Head to the quiz screen when it starts.</p>
+        <a href="quiz-play.html" class="btn btn-teal btn-block" style="margin-top:10px; display:block;">Open quiz screen</a>
+      </div>
+      <div id="quizForm">
+        <p class="muted" style="font-size:14px; margin:0 0 10px;">Quickest correct answers win — no extra info needed, just your name.</p>
+        <button class="btn btn-teal btn-block" id="joinQuizBtn">Join the quiz</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc, serverTimestamp, collection, query, where, limit, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+document.getElementById("eventName").textContent = window.EVENT_NAME || "Event Check-In";
+
+const app = initializeApp(window.FIREBASE_CONFIG);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2400);
+}
+
+function showStep(id) {
+  document.querySelectorAll(".step").forEach(s => s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+
+function genId() {
+  return "att_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+async function ensureAuth() {
+  return new Promise(resolve => {
+    onAuthStateChanged(auth, user => {
+      if (user) resolve(user);
+      else signInAnonymously(auth).catch(err => { console.error(err); toast("Connection error — check your internet."); });
+    });
+  });
+}
+
+function renderQr(attendeeId) {
+  const el = document.getElementById("qrcode");
+  el.innerHTML = "";
+  // eslint-disable-next-line no-undef
+  new QRCode(el, { text: attendeeId, width: 180, height: 180, colorDark: "#0b0e14", colorLight: "#ffffff" });
+}
+
+async function loadAttendeeIntoPass(attendeeId, data) {
+  document.getElementById("passName").textContent = data.name;
+  document.getElementById("passStaffId").textContent = data.staffId;
+  renderQr(attendeeId);
+  showStep("step-pass");
+
+  // reflect karaoke state
+  const kSnap = await getDoc(doc(db, "karaoke_participants", attendeeId));
+  if (kSnap.exists()) {
+    document.getElementById("karaokeForm").style.display = "none";
+    document.getElementById("karaokeJoined").style.display = "block";
+    const g = kSnap.data().gender;
+    document.getElementById("karaokeGenderTag").textContent = g === "male" ? "Registered as Male" : "Registered as Female";
+  }
+
+  const qSnap = await getDoc(doc(db, "quiz_participants", attendeeId));
+  if (qSnap.exists()) {
+    document.getElementById("quizForm").style.display = "none";
+    document.getElementById("quizJoined").style.display = "block";
+  }
+}
+
+let currentAttendeeId = localStorage.getItem("attendeeId");
+let currentName = "";
+let selectedGender = null;
+
+document.getElementById("pickMale").addEventListener("click", () => {
+  selectedGender = "male";
+  document.getElementById("pickMale").classList.add("selected", "male");
+  document.getElementById("pickFemale").classList.remove("selected", "female");
+  const btn = document.getElementById("joinKaraokeBtn");
+  btn.disabled = false;
+  btn.textContent = "Join as Male";
+});
+document.getElementById("pickFemale").addEventListener("click", () => {
+  selectedGender = "female";
+  document.getElementById("pickFemale").classList.add("selected", "female");
+  document.getElementById("pickMale").classList.remove("selected", "male");
+  const btn = document.getElementById("joinKaraokeBtn");
+  btn.disabled = false;
+  btn.textContent = "Join as Female";
+});
+
+document.getElementById("joinKaraokeBtn").addEventListener("click", async () => {
+  if (!selectedGender || !currentAttendeeId) return;
+  try {
+    await setDoc(doc(db, "karaoke_participants", currentAttendeeId), {
+      attendeeId: currentAttendeeId,
+      name: currentName,
+      gender: selectedGender,
+      paired: false,
+      pairId: null,
+      joinedAt: serverTimestamp()
+    });
+    document.getElementById("karaokeForm").style.display = "none";
+    document.getElementById("karaokeJoined").style.display = "block";
+    document.getElementById("karaokeGenderTag").textContent = selectedGender === "male" ? "Registered as Male" : "Registered as Female";
+    toast("You're on the karaoke lineup 🎤");
+  } catch (e) {
+    console.error(e);
+    toast("Couldn't join karaoke — try again.");
+  }
+});
+
+document.getElementById("joinQuizBtn").addEventListener("click", async () => {
+  if (!currentAttendeeId) return;
+  try {
+    await setDoc(doc(db, "quiz_participants", currentAttendeeId), {
+      attendeeId: currentAttendeeId,
+      name: currentName,
+      totalScore: 0,
+      joinedAt: serverTimestamp()
+    });
+    document.getElementById("quizForm").style.display = "none";
+    document.getElementById("quizJoined").style.display = "block";
+    toast("You're in the quiz 🧠");
+  } catch (e) {
+    console.error(e);
+    toast("Couldn't join the quiz — try again.");
+  }
+});
+
+document.getElementById("submitBtn").addEventListener("click", async () => {
+  const staffId = document.getElementById("staffId").value.trim();
+  const name = document.getElementById("name").value.trim();
+  const contact = document.getElementById("contact").value.trim();
+  const errEl = document.getElementById("formError");
+
+  if (!staffId || !name || !contact) {
+    errEl.textContent = "Please fill in all three fields.";
+    return;
+  }
+  errEl.textContent = "";
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  btn.textContent = "Checking in…";
+
+  try {
+    await ensureAuth();
+
+    // Look up by Staff ID first so re-registering (e.g. on a new phone, or
+    // a refreshed page) resumes the same pass instead of creating a
+    // duplicate entry — important since duplicates would mean extra
+    // lucky draw chances for the same person.
+    const existingQ = query(collection(db, "attendees"), where("staffId", "==", staffId), limit(1));
+    const existingSnap = await getDocs(existingQ);
+
+    let attendeeId;
+    if (!existingSnap.empty) {
+      attendeeId = existingSnap.docs[0].id;
+      await setDoc(doc(db, "attendees", attendeeId), { name, contact }, { merge: true });
+      toast("Welcome back — resuming your pass.");
+    } else {
+      attendeeId = genId();
+      await setDoc(doc(db, "attendees", attendeeId), {
+        attendeeId, staffId, name, contact,
+        checkedIn: true,
+        checkedInAt: serverTimestamp(),
+        registeredAt: serverTimestamp(),
+        source: "self"
+      });
+      toast("Checked in — welcome!");
+    }
+
+    localStorage.setItem("attendeeId", attendeeId);
+    currentAttendeeId = attendeeId;
+    currentName = name;
+    await loadAttendeeIntoPass(attendeeId, { staffId, name });
+  } catch (e) {
+    console.error(e);
+    errEl.textContent = "Something went wrong. Check your connection and try again.";
+    btn.disabled = false;
+    btn.textContent = "Check in";
+  }
+});
+
+// On load: if this device already registered, skip straight to the pass
+(async function init() {
+  await ensureAuth();
+  if (currentAttendeeId) {
+    const snap = await getDoc(doc(db, "attendees", currentAttendeeId));
+    if (snap.exists()) {
+      currentName = snap.data().name;
+      await loadAttendeeIntoPass(currentAttendeeId, snap.data());
+      return;
+    }
+  }
+  showStep("step-form");
+})();
+</script>
+</body>
+</html>

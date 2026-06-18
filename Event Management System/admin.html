@@ -1,0 +1,882 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Event Control Room</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Work+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="firebase-config.js"></script>
+<style>
+  #pinGate {
+    position: fixed; inset: 0; background: var(--bg); display: flex;
+    align-items: center; justify-content: center; z-index: 999;
+  }
+  #pinGate .card { max-width: 340px; width: 90%; text-align: center; }
+  #pinGate .display { font-size: 30px; color: var(--gold); margin-bottom: 14px; }
+
+  #app { display: none; }
+
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    flex-wrap: wrap; gap: 10px; position: sticky; top: 0; background: var(--bg); z-index: 50;
+  }
+  .topbar .display { font-size: 24px; color: var(--gold); }
+  .topbar .links { display: flex; gap: 8px; flex-wrap: wrap; }
+  .topbar .links a, .topbar .links button { font-size: 13px; padding: 9px 14px; }
+
+  .tabs { display: flex; gap: 8px; padding: 16px 20px 0; flex-wrap: wrap; }
+  .tab-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--text-muted);
+  }
+  .tab-btn.active { background: var(--surface-2); color: var(--text); border-color: var(--gold); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .stat { text-align: center; }
+  .stat .num { font-family: var(--font-display); font-size: 34px; color: var(--gold); }
+  .stat .lbl { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200;
+    display: none; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-bg.show { display: flex; }
+  .modal-card { background: var(--surface); border-radius: var(--radius); padding: 28px; max-width: 380px; text-align: center; }
+  .modal-card .qr-wrap { background: #fff; padding: 16px; border-radius: 12px; display: inline-block; margin: 16px 0; }
+
+  .section-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
+
+  .pair-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); gap: 10px; flex-wrap: wrap; }
+  .pair-row:last-child { border-bottom: none; }
+  .pair-row .who { font-size: 15px; }
+  .pair-row .meta { font-size: 12px; color: var(--text-muted); }
+  .status-tag { font-family: var(--font-mono); font-size: 11px; padding: 3px 8px; border-radius: 100px; border: 1px solid var(--border); }
+  .status-tag.pending { color: var(--text-muted); }
+  .status-tag.performing { color: var(--red); border-color: var(--red); }
+  .status-tag.results { color: var(--gold); border-color: var(--gold); }
+  .status-tag.done { color: var(--teal); border-color: var(--teal); }
+
+  .opt-input-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+  .opt-input-row input[type=radio] { width: auto; flex: 0 0 auto; }
+  .opt-input-row input[type=text] { flex: 1; }
+
+  .qlist-row { padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .qlist-row:last-child { border-bottom: none; }
+  .qlist-row .qtext { font-size: 15px; margin-bottom: 4px; }
+  .qlist-row .opts { font-size: 12px; color: var(--text-muted); }
+  .qlist-row .opts .correct { color: var(--teal); }
+  .qlist-row .row-actions { margin-top: 8px; display: flex; gap: 6px; }
+  .qlist-row .row-actions button { font-size: 12px; padding: 6px 10px; }
+
+  .big-status { text-align: center; padding: 20px 0; }
+  .big-status .display { font-size: 38px; }
+  .draw-name-list { font-size: 13px; color: var(--text-muted); margin-top: 6px; max-height: 60px; overflow: hidden; }
+
+  .danger-zone { border: 1px dashed var(--red); border-radius: var(--radius); padding: 16px; margin-top: 24px; }
+  .danger-zone .eyebrow { color: var(--red); }
+</style>
+</head>
+<body>
+
+<div id="pinGate">
+  <div class="card">
+    <div class="display">Control Room</div>
+    <p class="muted" style="margin-bottom: 16px;">Enter the event passcode to continue.</p>
+    <input type="password" id="pinInput" placeholder="Passcode" autocomplete="off" />
+    <button class="btn btn-gold btn-block" id="pinSubmit" style="margin-top: 12px;">Enter</button>
+    <p class="muted" id="pinError" style="font-size: 13px; margin-top: 10px; min-height: 1px;"></p>
+  </div>
+</div>
+
+<div id="app">
+  <div class="topbar">
+    <div class="display" id="topEventName">Event Control Room</div>
+    <div class="links">
+      <button class="btn btn-ghost" id="showQrBtn">Entrance QR</button>
+      <a class="btn btn-ghost" href="display.html" target="_blank">Open big screen ↗</a>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="btn tab-btn active" data-tab="attendees">Attendees</button>
+    <button class="btn tab-btn" data-tab="draw">Lucky Draw</button>
+    <button class="btn tab-btn" data-tab="karaoke">Karaoke</button>
+    <button class="btn tab-btn" data-tab="quiz">Quiz</button>
+  </div>
+
+  <div class="wrap">
+
+    <!-- ===================== ATTENDEES ===================== -->
+    <div class="panel active" id="panel-attendees">
+      <div class="grid" style="margin-bottom: 18px;">
+        <div class="card stat"><div class="num" id="statTotal">0</div><div class="lbl">Checked in</div></div>
+        <div class="card stat"><div class="num" id="statKaraoke">0</div><div class="lbl">Karaoke signups</div></div>
+        <div class="card stat"><div class="num" id="statQuiz">0</div><div class="lbl">Quiz signups</div></div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <div class="eyebrow">All attendees</div>
+          <div class="row" style="max-width: 420px;">
+            <input type="text" id="attendeeSearch" placeholder="Search name or staff ID…" />
+            <button class="btn btn-ghost" id="exportCsvBtn" style="flex:0 0 auto;">Export CSV</button>
+          </div>
+        </div>
+        <div style="max-height: 480px; overflow:auto;">
+          <table>
+            <thead><tr><th>Staff ID</th><th>Name</th><th>Contact</th><th>Karaoke</th><th>Quiz</th><th>Lucky draw</th></tr></thead>
+            <tbody id="attendeeRows"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== LUCKY DRAW ===================== -->
+    <div class="panel" id="panel-draw">
+      <div class="grid" style="grid-template-columns: 1fr 1fr;">
+        <div class="card">
+          <div class="eyebrow">Setup</div>
+          <label>Stop mode</label>
+          <div class="row">
+            <label class="btn" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="radio" name="stopMode" value="time" checked style="width:auto;" /> Time-based
+            </label>
+            <label class="btn" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="radio" name="stopMode" value="manual" style="width:auto;" /> Manual stop
+            </label>
+          </div>
+          <label for="drawDuration">Duration (seconds)</label>
+          <input type="number" id="drawDuration" value="8" min="2" max="60" />
+          <label style="display:flex; align-items:center; gap:8px; margin-top:16px;">
+            <input type="checkbox" id="excludeWinners" checked style="width:auto;" /> Exclude past winners tonight
+          </label>
+
+          <button class="btn btn-gold btn-block" id="startDrawBtn" style="margin-top:20px;">Start lucky draw</button>
+          <button class="btn btn-red btn-block" id="stopDrawBtn" style="margin-top:10px; display:none;">Stop now &amp; reveal</button>
+          <button class="btn btn-ghost btn-block" id="resetDrawBtn" style="margin-top:10px;">Reset to idle</button>
+        </div>
+
+        <div class="card">
+          <div class="eyebrow">Status</div>
+          <div class="big-status" id="drawStatus">
+            <div class="display muted">Idle</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <div class="eyebrow" style="margin-bottom:10px;">Winners tonight</div>
+        <table>
+          <thead><tr><th>#</th><th>Name</th><th>Staff ID</th><th>Time</th></tr></thead>
+          <tbody id="winnerRows"><tr><td colspan="4" class="muted">No winners yet.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===================== KARAOKE ===================== -->
+    <div class="panel" id="panel-karaoke">
+      <div class="grid" style="grid-template-columns: 1fr 1fr;">
+        <div class="card">
+          <div class="eyebrow">Song bank</div>
+          <div class="row" style="margin-top:10px;">
+            <input type="text" id="songInput" placeholder="Song title — artist" />
+            <button class="btn btn-pink" id="addSongBtn" style="flex:0 0 auto;">Add</button>
+          </div>
+          <div style="max-height: 220px; overflow:auto; margin-top:14px;">
+            <table>
+              <thead><tr><th>Song</th><th>Status</th><th></th></tr></thead>
+              <tbody id="songRows"><tr><td colspan="3" class="muted">No songs yet.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="eyebrow">Pairing</div>
+          <p class="muted" id="pairingCounts" style="font-size:14px; margin: 10px 0;">Loading signups…</p>
+          <button class="btn btn-pink btn-block" id="generatePairsBtn">Auto-generate pairs</button>
+          <button class="btn btn-ghost btn-block" id="resetKaraokeBtn" style="margin-top:10px;">Reset karaoke night</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <div class="section-title">
+          <div class="eyebrow">Pairs &amp; lineup</div>
+          <button class="btn btn-gold" id="announceWinnerBtn">Announce winning pair 🏆</button>
+        </div>
+        <div id="pairRows"><p class="muted">No pairs yet — add songs and generate pairs.</p></div>
+      </div>
+    </div>
+
+    <!-- ===================== QUIZ ===================== -->
+    <div class="panel" id="panel-quiz">
+      <div class="grid" style="grid-template-columns: 1fr 1fr;">
+        <div class="card">
+          <div class="eyebrow">Add question</div>
+          <label for="qText">Question</label>
+          <input type="text" id="qText" placeholder="e.g. What year did the company start?" />
+          <div id="qOptionsInput">
+            <div class="opt-input-row"><input type="radio" name="qCorrect" value="0" checked /><input type="text" placeholder="Option A" /></div>
+            <div class="opt-input-row"><input type="radio" name="qCorrect" value="1" /><input type="text" placeholder="Option B" /></div>
+            <div class="opt-input-row"><input type="radio" name="qCorrect" value="2" /><input type="text" placeholder="Option C" /></div>
+            <div class="opt-input-row"><input type="radio" name="qCorrect" value="3" /><input type="text" placeholder="Option D" /></div>
+          </div>
+          <p class="muted" style="font-size:12px; margin-top:8px;">Select the radio next to the correct answer.</p>
+          <button class="btn btn-teal btn-block" id="addQuestionBtn" style="margin-top:14px;">Add question</button>
+
+          <label for="quizDuration" style="margin-top:22px;">Seconds per question</label>
+          <input type="number" id="quizDuration" value="15" min="5" max="120" />
+        </div>
+
+        <div class="card">
+          <div class="eyebrow">Live control</div>
+          <div class="big-status" id="quizStatus"><div class="display muted">Idle</div></div>
+          <div class="row" style="margin-top:14px;">
+            <button class="btn btn-teal" id="quizLobbyBtn">Go to lobby</button>
+            <button class="btn btn-teal" id="quizNextBtn">Next question</button>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <button class="btn btn-ghost" id="quizEndQBtn">End question now</button>
+            <button class="btn btn-gold" id="quizFinishBtn">Finish &amp; show results</button>
+          </div>
+          <p class="muted" id="quizAnswerCount" style="font-size:13px; margin-top:12px;"></p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <div class="eyebrow" style="margin-bottom:10px;">Question bank</div>
+        <div id="questionRows"><p class="muted">No questions yet.</p></div>
+      </div>
+
+      <div class="danger-zone">
+        <div class="eyebrow">Danger zone</div>
+        <p class="muted" style="font-size:13px;">Clears all quiz answers and resets every participant's score to zero. Question bank is kept.</p>
+        <button class="btn btn-red" id="resetQuizScoresBtn" style="margin-top:8px;">Reset quiz scores</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="modal-bg" id="qrModal">
+  <div class="modal-card">
+    <div class="display" style="color: var(--gold); font-size: 22px;">Entrance Pass</div>
+    <p class="muted" style="font-size:13px;">Print this or display it at the door.</p>
+    <div class="qr-wrap"><div id="entranceQr"></div></div>
+    <p class="mono muted" id="entranceUrl" style="font-size:12px; word-break: break-all;"></p>
+    <button class="btn btn-ghost btn-block" id="closeQrModal" style="margin-top:10px;">Close</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, onSnapshot,
+  collection, query, orderBy, getDocs, increment, serverTimestamp, writeBatch
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+document.getElementById("topEventName").textContent = window.EVENT_NAME || "Event Control Room";
+
+const app = initializeApp(window.FIREBASE_CONFIG);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2400);
+}
+async function ensureAuth() {
+  return new Promise(resolve => {
+    onAuthStateChanged(auth, user => { if (user) resolve(user); else signInAnonymously(auth).catch(console.error); });
+  });
+}
+
+/* ===================== PIN gate ===================== */
+function tryPin() {
+  const val = document.getElementById("pinInput").value;
+  if (val === (window.ADMIN_PASSCODE || "")) {
+    sessionStorage.setItem("adminAuthed", "1");
+    document.getElementById("pinGate").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    boot();
+  } else {
+    document.getElementById("pinError").textContent = "Wrong passcode — try again.";
+  }
+}
+document.getElementById("pinSubmit").addEventListener("click", tryPin);
+document.getElementById("pinInput").addEventListener("keydown", e => { if (e.key === "Enter") tryPin(); });
+if (sessionStorage.getItem("adminAuthed") === "1") {
+  document.getElementById("pinGate").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  boot();
+}
+
+/* ===================== Tabs ===================== */
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+  });
+});
+
+/* ===================== Entrance QR modal ===================== */
+document.getElementById("showQrBtn").addEventListener("click", () => {
+  const url = new URL("register.html", window.location.href).toString();
+  document.getElementById("entranceUrl").textContent = url;
+  const el = document.getElementById("entranceQr");
+  el.innerHTML = "";
+  // eslint-disable-next-line no-undef
+  new QRCode(el, { text: url, width: 220, height: 220, colorDark: "#0b0e14", colorLight: "#ffffff" });
+  document.getElementById("qrModal").classList.add("show");
+});
+document.getElementById("closeQrModal").addEventListener("click", () => {
+  document.getElementById("qrModal").classList.remove("show");
+});
+
+/* ===================== boot ===================== */
+let booted = false;
+async function boot() {
+  if (booted) return;
+  booted = true;
+  await ensureAuth();
+  watchAttendees();
+  watchDraw();
+  watchKaraoke();
+  watchQuiz();
+}
+
+/* ===================== ATTENDEES ===================== */
+let allAttendees = [];
+function watchAttendees() {
+  onSnapshot(collection(db, "attendees"), snap => {
+    allAttendees = [];
+    snap.forEach(d => allAttendees.push({ id: d.id, ...d.data() }));
+    allAttendees.sort((a, b) => (b.registeredAt?.toMillis?.() || 0) - (a.registeredAt?.toMillis?.() || 0));
+    renderAttendeeTable();
+  });
+  onSnapshot(collection(db, "karaoke_participants"), snap => {
+    document.getElementById("statKaraoke").textContent = snap.size;
+  });
+  onSnapshot(collection(db, "quiz_participants"), snap => {
+    document.getElementById("statQuiz").textContent = snap.size;
+  });
+}
+
+let karaokeIdSet = new Set();
+let quizIdSet = new Set();
+onSnapshot(collection(db, "karaoke_participants"), snap => {
+  karaokeIdSet = new Set(); snap.forEach(d => karaokeIdSet.add(d.id)); renderAttendeeTable();
+});
+onSnapshot(collection(db, "quiz_participants"), snap => {
+  quizIdSet = new Set(); snap.forEach(d => quizIdSet.add(d.id)); renderAttendeeTable();
+});
+
+function renderAttendeeTable() {
+  document.getElementById("statTotal").textContent = allAttendees.length;
+  const search = (document.getElementById("attendeeSearch").value || "").toLowerCase();
+  const rows = document.getElementById("attendeeRows");
+  const filtered = allAttendees.filter(a =>
+    !search || (a.name || "").toLowerCase().includes(search) || (a.staffId || "").toLowerCase().includes(search)
+  );
+  if (filtered.length === 0) {
+    rows.innerHTML = `<tr><td colspan="6" class="muted">No attendees match.</td></tr>`;
+    return;
+  }
+  rows.innerHTML = filtered.map(a => `
+    <tr>
+      <td class="mono">${escapeHtml(a.staffId || "")}</td>
+      <td>${escapeHtml(a.name || "")}</td>
+      <td class="mono">${escapeHtml(a.contact || "")}</td>
+      <td>${karaokeIdSet.has(a.id) ? "✅" : "—"}</td>
+      <td>${quizIdSet.has(a.id) ? "✅" : "—"}</td>
+      <td>${a.wonLuckyDraw ? "🏆" : "—"}</td>
+    </tr>
+  `).join("");
+}
+document.getElementById("attendeeSearch").addEventListener("input", renderAttendeeTable);
+
+document.getElementById("exportCsvBtn").addEventListener("click", () => {
+  const header = "Staff ID,Name,Contact,Karaoke,Quiz,Lucky Draw Winner\n";
+  const lines = allAttendees.map(a => [
+    a.staffId, a.name, a.contact,
+    karaokeIdSet.has(a.id) ? "Yes" : "No",
+    quizIdSet.has(a.id) ? "Yes" : "No",
+    a.wonLuckyDraw ? "Yes" : "No"
+  ].map(v => `"${String(v || "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([header + lines], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "attendees.csv";
+  a.click();
+});
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* ===================== LUCKY DRAW ===================== */
+let drawTimeoutHandle = null;
+
+async function setDisplayMode(mode) {
+  await setDoc(doc(db, "state", "display"), { mode }, { merge: true });
+}
+
+document.getElementById("startDrawBtn").addEventListener("click", async () => {
+  const stopMode = document.querySelector('input[name="stopMode"]:checked').value;
+  const durationSec = Number(document.getElementById("drawDuration").value) || 8;
+  const excludeWinners = document.getElementById("excludeWinners").checked;
+
+  const pool = allAttendees.filter(a => !excludeWinners || !a.wonLuckyDraw);
+  if (pool.length === 0) {
+    toast("No eligible attendees for the draw.");
+    return;
+  }
+  const poolNames = pool.map(a => ({ attendeeId: a.id, name: a.name, staffId: a.staffId || "" }));
+  const startedAtMs = Date.now();
+
+  await setDoc(doc(db, "state", "lucky_draw"), {
+    status: "running", stopMode, durationSec, startedAtMs, poolNames,
+    winnerName: null, winnerStaffId: null, winnerAttendeeId: null
+  });
+  await setDisplayMode("lucky_draw");
+});
+
+document.getElementById("stopDrawBtn").addEventListener("click", async () => {
+  if (drawTimeoutHandle) { clearTimeout(drawTimeoutHandle); drawTimeoutHandle = null; }
+  const snap = await getDoc(doc(db, "state", "lucky_draw"));
+  const poolNames = snap.exists() ? (snap.data().poolNames || []) : [];
+  stopDraw(poolNames);
+});
+
+let stopInProgress = false;
+async function stopDraw(poolNames) {
+  if (stopInProgress) return;
+  if (!poolNames || poolNames.length === 0) return;
+  stopInProgress = true;
+  try {
+    const winner = poolNames[Math.floor(Math.random() * poolNames.length)];
+    await updateDoc(doc(db, "state", "lucky_draw"), {
+      status: "revealed",
+      winnerName: winner.name, winnerStaffId: winner.staffId, winnerAttendeeId: winner.attendeeId
+    });
+    await addDoc(collection(db, "lucky_draw_winners"), {
+      attendeeId: winner.attendeeId, name: winner.name, staffId: winner.staffId, wonAt: serverTimestamp()
+    });
+    await updateDoc(doc(db, "attendees", winner.attendeeId), { wonLuckyDraw: true });
+    document.getElementById("startDrawBtn").style.display = "block";
+    document.getElementById("stopDrawBtn").style.display = "none";
+    toast("🎉 Winner revealed: " + winner.name);
+  } finally {
+    stopInProgress = false;
+  }
+}
+
+document.getElementById("resetDrawBtn").addEventListener("click", async () => {
+  if (drawTimeoutHandle) { clearTimeout(drawTimeoutHandle); drawTimeoutHandle = null; }
+  await setDoc(doc(db, "state", "lucky_draw"), { status: "idle" });
+  await setDisplayMode("idle");
+  document.getElementById("startDrawBtn").style.display = "block";
+  document.getElementById("stopDrawBtn").style.display = "none";
+});
+
+function watchDraw() {
+  onSnapshot(doc(db, "state", "lucky_draw"), snap => {
+    const el = document.getElementById("drawStatus");
+    if (!snap.exists() || snap.data().status === "idle") {
+      el.innerHTML = `<div class="display muted">Idle</div>`;
+      document.getElementById("startDrawBtn").style.display = "block";
+      document.getElementById("stopDrawBtn").style.display = "none";
+      return;
+    }
+    const s = snap.data();
+    if (s.status === "running") {
+      el.innerHTML = `<div class="display" style="color:var(--gold);">Running…</div>
+        <p class="muted">${s.poolNames.length} people in the pool</p>`;
+      document.getElementById("startDrawBtn").style.display = "none";
+      document.getElementById("stopDrawBtn").style.display = "block";
+
+      // Reconcile the auto-stop timer against live data — this runs every
+      // time the doc is read, including right after admin.html loads, so a
+      // page refresh mid-draw doesn't lose the scheduled stop.
+      if (drawTimeoutHandle) { clearTimeout(drawTimeoutHandle); drawTimeoutHandle = null; }
+      if (s.stopMode === "time" && s.startedAtMs) {
+        const remaining = (s.startedAtMs + s.durationSec * 1000) - Date.now();
+        if (remaining <= 0) stopDraw(s.poolNames);
+        else drawTimeoutHandle = setTimeout(() => stopDraw(s.poolNames), remaining);
+      }
+    } else if (s.status === "revealed") {
+      if (drawTimeoutHandle) { clearTimeout(drawTimeoutHandle); drawTimeoutHandle = null; }
+      el.innerHTML = `<div class="display" style="color:var(--gold);">🏆 ${escapeHtml(s.winnerName || "")}</div>
+        <p class="muted mono">${escapeHtml(s.winnerStaffId || "")}</p>`;
+      document.getElementById("startDrawBtn").style.display = "block";
+      document.getElementById("stopDrawBtn").style.display = "none";
+    }
+  });
+
+  onSnapshot(query(collection(db, "lucky_draw_winners"), orderBy("wonAt", "desc")), snap => {
+    const rows = document.getElementById("winnerRows");
+    if (snap.empty) { rows.innerHTML = `<tr><td colspan="4" class="muted">No winners yet.</td></tr>`; return; }
+    let i = snap.size;
+    rows.innerHTML = [...snap.docs].map(d => {
+      const w = d.data();
+      const t = w.wonAt?.toDate ? w.wonAt.toDate().toLocaleTimeString() : "";
+      return `<tr><td>${i--}</td><td>${escapeHtml(w.name)}</td><td class="mono">${escapeHtml(w.staffId || "")}</td><td class="muted">${t}</td></tr>`;
+    }).join("");
+  });
+}
+
+/* ===================== KARAOKE ===================== */
+let karaokeParticipants = [];
+let karaokeSongs = [];
+let karaokePairs = [];
+
+function watchKaraoke() {
+  onSnapshot(collection(db, "karaoke_participants"), snap => {
+    karaokeParticipants = [];
+    snap.forEach(d => karaokeParticipants.push({ id: d.id, ...d.data() }));
+    renderPairingCounts();
+  });
+  onSnapshot(collection(db, "karaoke_songs"), snap => {
+    karaokeSongs = [];
+    snap.forEach(d => karaokeSongs.push({ id: d.id, ...d.data() }));
+    renderSongRows();
+  });
+  onSnapshot(query(collection(db, "karaoke_pairs"), orderBy("createdAt", "asc")), snap => {
+    karaokePairs = [];
+    snap.forEach(d => karaokePairs.push({ id: d.id, ...d.data() }));
+    renderPairRows();
+  });
+  onSnapshot(collection(db, "karaoke_votes"), () => renderPairRows());
+}
+
+function renderPairingCounts() {
+  const unpaired = karaokeParticipants.filter(p => !p.paired);
+  const males = unpaired.filter(p => p.gender === "male").length;
+  const females = unpaired.filter(p => p.gender === "female").length;
+  document.getElementById("pairingCounts").textContent =
+    `${males} unpaired men · ${females} unpaired women waiting to be matched.`;
+}
+
+document.getElementById("addSongBtn").addEventListener("click", async () => {
+  const title = document.getElementById("songInput").value.trim();
+  if (!title) return;
+  await addDoc(collection(db, "karaoke_songs"), { title, assigned: false, createdAt: serverTimestamp() });
+  document.getElementById("songInput").value = "";
+});
+
+function renderSongRows() {
+  const rows = document.getElementById("songRows");
+  if (karaokeSongs.length === 0) { rows.innerHTML = `<tr><td colspan="3" class="muted">No songs yet.</td></tr>`; return; }
+  rows.innerHTML = karaokeSongs.map(s => `
+    <tr>
+      <td>${escapeHtml(s.title)}</td>
+      <td>${s.assigned ? '<span class="status-tag done">assigned</span>' : '<span class="status-tag pending">available</span>'}</td>
+      <td><button class="btn btn-ghost" data-del-song="${s.id}" style="font-size:12px; padding:6px 10px;">Delete</button></td>
+    </tr>
+  `).join("");
+  rows.querySelectorAll("[data-del-song]").forEach(btn => {
+    btn.addEventListener("click", () => deleteDoc(doc(db, "karaoke_songs", btn.dataset.delSong)));
+  });
+}
+
+document.getElementById("generatePairsBtn").addEventListener("click", async () => {
+  const unpaired = karaokeParticipants.filter(p => !p.paired);
+  const males = shuffle(unpaired.filter(p => p.gender === "male"));
+  const females = shuffle(unpaired.filter(p => p.gender === "female"));
+  const availableSongs = shuffle(karaokeSongs.filter(s => !s.assigned));
+  const n = Math.min(males.length, females.length, availableSongs.length || Infinity);
+
+  if (n === 0) {
+    toast("Need at least one unpaired man, one unpaired woman, and one available song.");
+    return;
+  }
+
+  const batch = writeBatch(db);
+  for (let i = 0; i < n; i++) {
+    const male = males[i], female = females[i], song = availableSongs[i];
+    const pairRef = doc(collection(db, "karaoke_pairs"));
+    batch.set(pairRef, {
+      maleId: male.id, maleName: male.name,
+      femaleId: female.id, femaleName: female.name,
+      songId: song ? song.id : null, song: song ? song.title : "To be announced",
+      status: "pending", avgPerformance: 0, avgSinging: 0, totalScore: 0, voteCount: 0,
+      createdAt: serverTimestamp()
+    });
+    batch.update(doc(db, "karaoke_participants", male.id), { paired: true, pairId: pairRef.id });
+    batch.update(doc(db, "karaoke_participants", female.id), { paired: true, pairId: pairRef.id });
+    if (song) batch.update(doc(db, "karaoke_songs", song.id), { assigned: true });
+  }
+  await batch.commit();
+  toast(`${n} pair${n === 1 ? "" : "s"} created.`);
+});
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function renderPairRows() {
+  const wrap = document.getElementById("pairRows");
+  if (karaokePairs.length === 0) { wrap.innerHTML = `<p class="muted">No pairs yet — add songs and generate pairs.</p>`; return; }
+  wrap.innerHTML = karaokePairs.map(p => `
+    <div class="pair-row" data-pair="${p.id}">
+      <div>
+        <div class="who">${escapeHtml(p.maleName)} &amp; ${escapeHtml(p.femaleName)}</div>
+        <div class="meta">${escapeHtml(p.song || "")}</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span class="status-tag ${p.status}">${p.status}</span>
+        ${p.status === "pending" ? `<button class="btn btn-pink" data-stage="${p.id}" style="font-size:12px; padding:7px 12px;">Put on stage</button>` : ""}
+        ${p.status === "performing" ? `<span class="mono muted" id="votecount-${p.id}" style="font-size:12px;">0 votes</span><button class="btn btn-red" data-close="${p.id}" style="font-size:12px; padding:7px 12px;">Close voting</button>` : ""}
+        ${p.status === "done" ? `<span class="mono" style="font-size:13px; color:var(--gold);">${(p.totalScore || 0).toFixed(1)} pts</span>` : ""}
+      </div>
+    </div>
+  `).join("");
+
+  wrap.querySelectorAll("[data-stage]").forEach(btn => btn.addEventListener("click", () => stagePair(btn.dataset.stage)));
+  wrap.querySelectorAll("[data-close]").forEach(btn => btn.addEventListener("click", () => closeVoting(btn.dataset.close)));
+
+  karaokePairs.filter(p => p.status === "performing").forEach(p => {
+    getDocs(query(collection(db, "karaoke_votes"))).then(snap => {
+      const count = snap.docs.filter(d => d.data().pairId === p.id).length;
+      const el = document.getElementById("votecount-" + p.id);
+      if (el) el.textContent = `${count} vote${count === 1 ? "" : "s"}`;
+    });
+  });
+}
+
+async function stagePair(pairId) {
+  await updateDoc(doc(db, "karaoke_pairs", pairId), { status: "performing" });
+  await setDoc(doc(db, "state", "karaoke"), { phase: "performing", currentPairId: pairId });
+  await setDisplayMode("karaoke");
+}
+
+async function closeVoting(pairId) {
+  const votesSnap = await getDocs(collection(db, "karaoke_votes"));
+  const votes = votesSnap.docs.map(d => d.data()).filter(v => v.pairId === pairId);
+  const count = votes.length;
+  const avgPerformance = count ? votes.reduce((s, v) => s + (v.performance || 0), 0) / count : 0;
+  const avgSinging = count ? votes.reduce((s, v) => s + (v.singing || 0), 0) / count : 0;
+  const totalScore = avgPerformance + avgSinging;
+
+  await updateDoc(doc(db, "karaoke_pairs", pairId), {
+    status: "done", avgPerformance, avgSinging, totalScore, voteCount: count
+  });
+  await setDoc(doc(db, "state", "karaoke"), { phase: "results", currentPairId: pairId });
+  toast("Voting closed — scores locked in.");
+}
+
+document.getElementById("announceWinnerBtn").addEventListener("click", async () => {
+  await setDoc(doc(db, "state", "karaoke"), { phase: "final", currentPairId: null });
+  await setDisplayMode("karaoke");
+});
+
+document.getElementById("resetKaraokeBtn").addEventListener("click", async () => {
+  if (!confirm("This clears all pairs and votes (songs and signups stay). Continue?")) return;
+  const batch = writeBatch(db);
+  const pairsSnap = await getDocs(collection(db, "karaoke_pairs"));
+  pairsSnap.forEach(d => batch.delete(d.ref));
+  const votesSnap = await getDocs(collection(db, "karaoke_votes"));
+  votesSnap.forEach(d => batch.delete(d.ref));
+  const partSnap = await getDocs(collection(db, "karaoke_participants"));
+  partSnap.forEach(d => batch.update(d.ref, { paired: false, pairId: null }));
+  const songsSnap = await getDocs(collection(db, "karaoke_songs"));
+  songsSnap.forEach(d => batch.update(d.ref, { assigned: false }));
+  await batch.commit();
+  await setDoc(doc(db, "state", "karaoke"), { phase: "lobby", currentPairId: null });
+  toast("Karaoke night reset.");
+});
+
+/* ===================== QUIZ ===================== */
+let quizQuestions = [];
+let quizState = { status: "idle" };
+
+function watchQuiz() {
+  onSnapshot(query(collection(db, "quiz_questions"), orderBy("order", "asc")), snap => {
+    quizQuestions = [];
+    snap.forEach(d => quizQuestions.push({ id: d.id, ...d.data() }));
+    renderQuestionRows();
+  });
+  onSnapshot(doc(db, "state", "quiz"), snap => {
+    quizState = snap.exists() ? snap.data() : { status: "idle" };
+    renderQuizStatus();
+  });
+}
+
+document.getElementById("addQuestionBtn").addEventListener("click", async () => {
+  const text = document.getElementById("qText").value.trim();
+  const inputs = [...document.querySelectorAll("#qOptionsInput .opt-input-row input[type=text]")];
+  const options = inputs.map(i => i.value.trim());
+  const correctIndex = Number(document.querySelector('input[name="qCorrect"]:checked').value);
+
+  if (!text || options.some(o => !o)) { toast("Fill in the question and all 4 options."); return; }
+
+  const order = quizQuestions.length ? Math.max(...quizQuestions.map(q => q.order || 0)) + 1 : 1;
+  await addDoc(collection(db, "quiz_questions"), { text, options, correctIndex, order, used: false });
+  document.getElementById("qText").value = "";
+  inputs.forEach(i => i.value = "");
+  document.querySelector('input[name="qCorrect"][value="0"]').checked = true;
+  toast("Question added.");
+});
+
+function renderQuestionRows() {
+  const wrap = document.getElementById("questionRows");
+  if (quizQuestions.length === 0) { wrap.innerHTML = `<p class="muted">No questions yet.</p>`; return; }
+  wrap.innerHTML = quizQuestions.map((q, idx) => `
+    <div class="qlist-row" style="${q.used ? "opacity:0.55;" : ""}">
+      <div class="qtext">${idx + 1}. ${escapeHtml(q.text)} ${q.used ? '<span class="status-tag done" style="margin-left:6px;">asked</span>' : ""}</div>
+      <div class="opts">${q.options.map((o, i) => `<span class="${i === q.correctIndex ? "correct" : ""}">${escapeHtml(o)}${i === q.correctIndex ? " ✓" : ""}</span>`).join(" &nbsp;·&nbsp; ")}</div>
+      <div class="row-actions">
+        <button class="btn btn-ghost" data-up="${q.id}">↑</button>
+        <button class="btn btn-ghost" data-down="${q.id}">↓</button>
+        <button class="btn btn-red" data-delq="${q.id}">Delete</button>
+      </div>
+    </div>
+  `).join("");
+  wrap.querySelectorAll("[data-delq]").forEach(b => b.addEventListener("click", () => deleteDoc(doc(db, "quiz_questions", b.dataset.delq))));
+  wrap.querySelectorAll("[data-up]").forEach(b => b.addEventListener("click", () => moveQuestion(b.dataset.up, -1)));
+  wrap.querySelectorAll("[data-down]").forEach(b => b.addEventListener("click", () => moveQuestion(b.dataset.down, 1)));
+}
+
+async function moveQuestion(qid, dir) {
+  const idx = quizQuestions.findIndex(q => q.id === qid);
+  const swapIdx = idx + dir;
+  if (swapIdx < 0 || swapIdx >= quizQuestions.length) return;
+  const a = quizQuestions[idx], b = quizQuestions[swapIdx];
+  const batch = writeBatch(db);
+  batch.update(doc(db, "quiz_questions", a.id), { order: b.order });
+  batch.update(doc(db, "quiz_questions", b.id), { order: a.order });
+  await batch.commit();
+}
+
+document.getElementById("quizLobbyBtn").addEventListener("click", async () => {
+  await setDoc(doc(db, "state", "quiz"), { status: "lobby", currentQuestionId: null, batchNumber: 0 });
+  await setDisplayMode("quiz");
+});
+
+let quizTimeoutHandle = null;
+let quizEndInProgress = false;
+
+document.getElementById("quizNextBtn").addEventListener("click", async () => {
+  const next = quizQuestions.find(q => !q.used);
+  if (!next) { toast("No more questions in the bank — add more or finish the quiz."); return; }
+
+  const durationSec = Number(document.getElementById("quizDuration").value) || 15;
+  const batchNumber = (quizState.batchNumber || 0) + 1;
+  const questionStartedAtMs = Date.now();
+
+  await updateDoc(doc(db, "quiz_questions", next.id), { used: true });
+  await setDoc(doc(db, "state", "quiz"), {
+    status: "running", currentQuestionId: next.id, questionStartedAtMs, durationSec, batchNumber, lastResult: null
+  });
+  await setDisplayMode("quiz");
+});
+
+document.getElementById("quizEndQBtn").addEventListener("click", async () => {
+  if (quizTimeoutHandle) { clearTimeout(quizTimeoutHandle); quizTimeoutHandle = null; }
+  if (!quizState.currentQuestionId) return;
+  await endQuestion(quizState.currentQuestionId, quizState.questionStartedAtMs, quizState.durationSec);
+});
+
+async function endQuestion(questionId, startedAtMs, durationSec) {
+  if (quizEndInProgress) return;
+  quizEndInProgress = true;
+  try {
+    const qSnap = await getDoc(doc(db, "quiz_questions", questionId));
+    if (!qSnap.exists()) return;
+    const q = qSnap.data();
+    const durMs = (durationSec || 15) * 1000;
+
+    const answersSnap = await getDocs(collection(db, "quiz_answers"));
+    const answers = answersSnap.docs
+      .map(d => d.data())
+      .filter(a => a.questionId === questionId && a.selectedIndex === q.correctIndex)
+      .sort((a, b) => (a.clientTimeTakenMs || 0) - (b.clientTimeTakenMs || 0));
+
+    const batch = writeBatch(db);
+    let fastest = null;
+    answers.forEach((a, i) => {
+      const timeTaken = Math.min(a.clientTimeTakenMs || durMs, durMs);
+      const base = 50;
+      const speedBonus = Math.max(0, Math.round(50 * (1 - timeTaken / durMs)));
+      const points = base + speedBonus;
+      batch.set(doc(db, "quiz_participants", a.attendeeId), { totalScore: increment(points) }, { merge: true });
+      if (i === 0) fastest = { fastestName: a.name, fastestTimeMs: timeTaken, fastestAttendeeId: a.attendeeId };
+    });
+    await batch.commit();
+
+    await updateDoc(doc(db, "state", "quiz"), { status: "question_ended", lastResult: fastest });
+    if (fastest) toast(`⚡ Fastest correct: ${fastest.fastestName}`);
+  } finally {
+    quizEndInProgress = false;
+  }
+}
+
+document.getElementById("quizFinishBtn").addEventListener("click", async () => {
+  if (quizTimeoutHandle) { clearTimeout(quizTimeoutHandle); quizTimeoutHandle = null; }
+  await updateDoc(doc(db, "state", "quiz"), { status: "finished" });
+});
+
+function renderQuizStatus() {
+  const el = document.getElementById("quizStatus");
+  const s = quizState;
+  if (!s || s.status === "idle") { el.innerHTML = `<div class="display muted">Idle</div>`; return; }
+  if (s.status === "lobby") { el.innerHTML = `<div class="display" style="color:var(--teal);">Lobby</div><p class="muted">Waiting to start…</p>`; return; }
+  if (s.status === "running") {
+    el.innerHTML = `<div class="display" style="color:var(--teal);">Question ${s.batchNumber}</div><p class="muted">Live now — timer running</p>`;
+    watchAnswerCount(s.currentQuestionId);
+
+    if (quizTimeoutHandle) { clearTimeout(quizTimeoutHandle); quizTimeoutHandle = null; }
+    if (s.questionStartedAtMs) {
+      const remaining = (s.questionStartedAtMs + (s.durationSec || 15) * 1000 + 300) - Date.now();
+      if (remaining <= 0) endQuestion(s.currentQuestionId, s.questionStartedAtMs, s.durationSec);
+      else quizTimeoutHandle = setTimeout(() => endQuestion(s.currentQuestionId, s.questionStartedAtMs, s.durationSec), remaining);
+    }
+    return;
+  }
+  if (s.status === "question_ended") {
+    if (quizTimeoutHandle) { clearTimeout(quizTimeoutHandle); quizTimeoutHandle = null; }
+    el.innerHTML = `<div class="display" style="color:var(--gold);">Question ${s.batchNumber} ended</div>
+      <p class="muted">${s.lastResult ? "⚡ " + escapeHtml(s.lastResult.fastestName) : "No correct answers"}</p>`;
+    return;
+  }
+  if (s.status === "finished") { el.innerHTML = `<div class="display" style="color:var(--gold);">Finished 🏁</div>`; return; }
+}
+
+function watchAnswerCount(questionId) {
+  onSnapshot(collection(db, "quiz_answers"), snap => {
+    const count = snap.docs.filter(d => d.data().questionId === questionId).length;
+    document.getElementById("quizAnswerCount").textContent = `${count} answer${count === 1 ? "" : "s"} received so far`;
+  });
+}
+
+document.getElementById("resetQuizScoresBtn").addEventListener("click", async () => {
+  if (!confirm("This resets every participant's score to 0, clears all answers, and makes every question askable again. Continue?")) return;
+  const batch = writeBatch(db);
+  const answersSnap = await getDocs(collection(db, "quiz_answers"));
+  answersSnap.forEach(d => batch.delete(d.ref));
+  const partSnap = await getDocs(collection(db, "quiz_participants"));
+  partSnap.forEach(d => batch.update(d.ref, { totalScore: 0 }));
+  const qSnap = await getDocs(collection(db, "quiz_questions"));
+  qSnap.forEach(d => batch.update(d.ref, { used: false }));
+  await batch.commit();
+  await setDoc(doc(db, "state", "quiz"), { status: "idle", currentQuestionId: null, batchNumber: 0 });
+  toast("Quiz scores reset.");
+});
+</script>
+</body>
+</html>

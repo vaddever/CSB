@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Event Display</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Work+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="firebase-config.js"></script>
+<style>
+  html, body { height: 100%; overflow: hidden; }
+  .screen {
+    position: fixed; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    flex-direction: column;
+    text-align: center;
+    padding: 40px;
+  }
+  .screen.active { display: flex; }
+
+  /* ---- idle ---- */
+  #scr-idle .display { font-size: 7vw; color: var(--gold); }
+  #scr-idle .muted { font-size: 1.6vw; margin-top: 10px; }
+
+  /* ---- lucky draw ---- */
+  #scr-draw .eyebrow { font-size: 1.6vw; margin-bottom: 1vw; }
+  #scr-draw .shuffle-name { font-size: 7vw; color: var(--text); transition: opacity 0.06s; }
+  #scr-draw .winner-name { font-size: 9vw; color: var(--gold); text-shadow: 0 0 60px rgba(232,184,75,0.6); }
+  #scr-draw .winner-sub { font-size: 1.8vw; color: var(--text-muted); margin-top: 1vw; }
+  #scr-draw .timer { font-family: var(--font-mono); font-size: 2vw; color: var(--text-muted); margin-top: 2vw; }
+
+  /* ---- karaoke ---- */
+  #scr-karaoke .eyebrow { font-size: 1.6vw; color: var(--pink); }
+  #scr-karaoke .pair { font-size: 6.5vw; margin: 1vw 0; }
+  #scr-karaoke .song { font-size: 2.4vw; color: var(--text-muted); }
+  #scr-karaoke .votecount { font-family: var(--font-mono); font-size: 2vw; margin-top: 2vw; color: var(--pink); }
+  #scr-karaoke .scores { font-size: 3vw; margin-top: 2vw; }
+  #scr-karaoke .scores span { color: var(--pink); }
+  .leaderboard { list-style:none; padding:0; margin: 2vw auto 0; max-width: 720px; width:100%; text-align:left; }
+  .leaderboard li { display:flex; justify-content:space-between; font-size: 2.2vw; padding: 0.8vw 0; border-bottom: 1px solid var(--border); }
+  .leaderboard li:first-child { color: var(--gold); font-size: 2.8vw; }
+
+  /* ---- quiz ---- */
+  #scr-quiz .eyebrow { font-size: 1.6vw; color: var(--teal); }
+  #scr-quiz .qtext { font-size: 4.2vw; margin: 1.4vw 0 2vw; max-width: 90%; }
+  #scr-quiz .options-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 1.4vw; max-width: 900px; width: 100%; }
+  #scr-quiz .opt-box { background: var(--surface); border: 2px solid var(--border); border-radius: 16px; padding: 1.4vw; font-size: 2vw; }
+  #scr-quiz .opt-box.correct { border-color: var(--teal); background: var(--teal-dim); }
+  #scr-quiz .ring-big { width: 9vw; height: 9vw; margin-bottom: 1.6vw; position: relative; }
+  #scr-quiz .ring-big svg { width:100%; height:100%; transform: rotate(-90deg); }
+  #scr-quiz .ring-big circle { fill:none; stroke-width: 6; }
+  #scr-quiz .ring-big .bg { stroke: var(--surface-2); }
+  #scr-quiz .ring-big .fg { stroke: var(--teal); stroke-linecap: round; transition: stroke-dashoffset 0.2s linear; }
+  #scr-quiz .ring-num { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family: var(--font-mono); font-size: 2.4vw; }
+  #scr-quiz .fastest { font-size: 2vw; color: var(--teal); margin-top: 1.4vw; }
+
+  canvas#confetti { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
+</style>
+</head>
+<body>
+
+<canvas id="confetti"></canvas>
+
+<div class="screen active" id="scr-idle">
+  <div class="display" id="idleEventName">Event Night</div>
+  <div class="muted">The show will begin shortly</div>
+</div>
+
+<div class="screen" id="scr-draw">
+  <div class="eyebrow" id="drawEyebrow">LUCKY DRAW</div>
+  <div class="shuffle-name" id="drawName">—</div>
+  <div class="winner-sub" id="drawSub"></div>
+  <div class="timer" id="drawTimer"></div>
+</div>
+
+<div class="screen" id="scr-karaoke">
+  <div class="eyebrow" id="karaokeEyebrow">KARAOKE NIGHT</div>
+  <div class="pair" id="karaokePair">—</div>
+  <div class="song" id="karaokeSong"></div>
+  <div class="votecount" id="karaokeVotes"></div>
+  <div class="scores" id="karaokeScores"></div>
+  <ul class="leaderboard" id="karaokeLeaderboard"></ul>
+</div>
+
+<div class="screen" id="scr-quiz">
+  <div class="eyebrow" id="quizEyebrow">QUIZ</div>
+  <div class="ring-big" id="quizRingWrap">
+    <svg viewBox="0 0 100 100">
+      <circle class="bg" cx="50" cy="50" r="44"></circle>
+      <circle class="fg" id="quizRingFg" cx="50" cy="50" r="44" stroke-dasharray="276" stroke-dashoffset="0"></circle>
+    </svg>
+    <div class="ring-num" id="quizRingNum">--</div>
+  </div>
+  <div class="qtext" id="quizQtext">—</div>
+  <div class="options-grid" id="quizOptions"></div>
+  <div class="fastest" id="quizFastest"></div>
+  <ul class="leaderboard" id="quizLeaderboard"></ul>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, getDoc, onSnapshot, collection, query, where, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+document.getElementById("idleEventName").textContent = window.EVENT_NAME || "Event Night";
+
+const app = initializeApp(window.FIREBASE_CONFIG);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+function showScreen(id) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+
+async function ensureAuth() {
+  return new Promise(resolve => {
+    onAuthStateChanged(auth, user => {
+      if (user) resolve(user);
+      else signInAnonymously(auth).catch(console.error);
+    });
+  });
+}
+
+/* ===================== confetti ===================== */
+const confettiCanvas = document.getElementById("confetti");
+const ctx = confettiCanvas.getContext("2d");
+function resizeCanvas() { confettiCanvas.width = window.innerWidth; confettiCanvas.height = window.innerHeight; }
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+let confettiPieces = [];
+const confettiColors = ["#e8b84b", "#ff4d8d", "#36d6c5", "#f4f1ea"];
+function burstConfetti() {
+  confettiPieces = [];
+  for (let i = 0; i < 160; i++) {
+    confettiPieces.push({
+      x: Math.random() * confettiCanvas.width,
+      y: -20 - Math.random() * confettiCanvas.height * 0.4,
+      r: 4 + Math.random() * 5,
+      c: confettiColors[Math.floor(Math.random() * confettiColors.length)],
+      vy: 2 + Math.random() * 3,
+      vx: -1.5 + Math.random() * 3,
+      rot: Math.random() * 360,
+      vr: -6 + Math.random() * 12
+    });
+  }
+}
+function animateConfetti() {
+  ctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+  confettiPieces.forEach(p => {
+    p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot * Math.PI / 180);
+    ctx.fillStyle = p.c;
+    ctx.fillRect(-p.r, -p.r * 0.6, p.r * 2, p.r * 1.2);
+    ctx.restore();
+  });
+  confettiPieces = confettiPieces.filter(p => p.y < confettiCanvas.height + 40);
+  requestAnimationFrame(animateConfetti);
+}
+animateConfetti();
+
+/* ===================== lucky draw ===================== */
+let shuffleInterval = null;
+let lastDrawStatus = null;
+
+function startShuffle(names) {
+  if (shuffleInterval) clearInterval(shuffleInterval);
+  if (!names || names.length === 0) { document.getElementById("drawName").textContent = "—"; return; }
+  const el = document.getElementById("drawName");
+  shuffleInterval = setInterval(() => {
+    el.style.opacity = 0;
+    setTimeout(() => {
+      el.textContent = names[Math.floor(Math.random() * names.length)];
+      el.style.opacity = 1;
+    }, 60);
+  }, 90);
+}
+function stopShuffle() {
+  if (shuffleInterval) { clearInterval(shuffleInterval); shuffleInterval = null; }
+}
+
+let drawTimerInterval = null;
+function renderDraw(s) {
+  showScreen("scr-draw");
+  const sub = document.getElementById("drawSub");
+  const timerEl = document.getElementById("drawTimer");
+  const eyebrow = document.getElementById("drawEyebrow");
+
+  if (s.status === "running") {
+    eyebrow.textContent = "PICKING A WINNER…";
+    sub.textContent = "";
+    startShuffle((s.poolNames || []).map(p => p.name));
+    document.getElementById("drawName").style.color = "var(--text)";
+    document.getElementById("drawName").style.fontSize = "7vw";
+    document.getElementById("drawName").style.textShadow = "none";
+
+    if (s.stopMode === "time" && s.startedAtMs) {
+      if (drawTimerInterval) clearInterval(drawTimerInterval);
+      drawTimerInterval = setInterval(() => {
+        const remaining = Math.max(0, Math.ceil((s.startedAtMs + s.durationSec * 1000 - Date.now()) / 1000));
+        timerEl.textContent = remaining > 0 ? `Stopping in ${remaining}s…` : "Stopping…";
+      }, 200);
+    } else {
+      timerEl.textContent = "";
+    }
+  }
+
+  if (s.status === "revealed") {
+    stopShuffle();
+    if (drawTimerInterval) clearInterval(drawTimerInterval);
+    timerEl.textContent = "";
+    eyebrow.textContent = "AND THE WINNER IS…";
+    const el = document.getElementById("drawName");
+    el.textContent = s.winnerName || "—";
+    el.style.color = "var(--gold)";
+    el.style.fontSize = "9vw";
+    el.style.textShadow = "0 0 60px rgba(232,184,75,0.6)";
+    sub.textContent = s.winnerStaffId ? `Staff ID: ${s.winnerStaffId}` : "";
+    if (lastDrawStatus !== "revealed") burstConfetti();
+  }
+
+  if (s.status === "idle") {
+    stopShuffle();
+    eyebrow.textContent = "LUCKY DRAW";
+    document.getElementById("drawName").textContent = "Ready when you are";
+    sub.textContent = "";
+    timerEl.textContent = "";
+  }
+
+  lastDrawStatus = s.status;
+}
+
+/* ===================== karaoke ===================== */
+let karaokeVoteUnsub = null;
+async function renderKaraoke(s) {
+  showScreen("scr-karaoke");
+  document.getElementById("karaokeLeaderboard").innerHTML = "";
+  document.getElementById("karaokeScores").textContent = "";
+  document.getElementById("karaokeVotes").textContent = "";
+
+  if (s.phase === "lobby" || !s.currentPairId) {
+    document.getElementById("karaokePair").textContent = "Get the mics ready";
+    document.getElementById("karaokeSong").textContent = "Karaoke night is about to begin";
+    if (karaokeVoteUnsub) { karaokeVoteUnsub(); karaokeVoteUnsub = null; }
+    return;
+  }
+
+  const pairSnap = await getDoc(doc(db, "karaoke_pairs", s.currentPairId));
+  if (!pairSnap.exists()) return;
+  const pair = pairSnap.data();
+  document.getElementById("karaokePair").textContent = `${pair.maleName} & ${pair.femaleName}`;
+  document.getElementById("karaokeSong").textContent = pair.song || "";
+
+  if (s.phase === "performing") {
+    if (karaokeVoteUnsub) karaokeVoteUnsub();
+    const votesQuery = query(collection(db, "karaoke_votes"), where("pairId", "==", s.currentPairId));
+    karaokeVoteUnsub = onSnapshot(votesQuery, snap => {
+      document.getElementById("karaokeVotes").textContent = `${snap.size} vote${snap.size === 1 ? "" : "s"} in`;
+    });
+  } else if (s.phase === "results") {
+    if (karaokeVoteUnsub) { karaokeVoteUnsub(); karaokeVoteUnsub = null; }
+    document.getElementById("karaokeScores").innerHTML =
+      `Performance <span>${(pair.avgPerformance || 0).toFixed(1)}</span> &nbsp; Singing <span>${(pair.avgSinging || 0).toFixed(1)}</span>`;
+  } else if (s.phase === "final") {
+    if (karaokeVoteUnsub) { karaokeVoteUnsub(); karaokeVoteUnsub = null; }
+    document.getElementById("karaokeEyebrow").textContent = "AND THE WINNING PAIR IS…";
+    const qs = query(collection(db, "karaoke_pairs"), orderBy("totalScore", "desc"), limit(8));
+    const allPairs = await getDocs(qs);
+    const list = document.getElementById("karaokeLeaderboard");
+    let rank = 1;
+    let crownedOnce = false;
+    allPairs.forEach(d => {
+      const p = d.data();
+      if (!p.totalScore && p.totalScore !== 0) return;
+      const li = document.createElement("li");
+      li.innerHTML = `<span>#${rank} ${p.maleName} &amp; ${p.femaleName}</span><span class="mono">${(p.totalScore || 0).toFixed(1)}</span>`;
+      list.appendChild(li);
+      if (rank === 1 && !crownedOnce) { crownedOnce = true; }
+      rank++;
+    });
+    document.getElementById("karaokePair").textContent = "";
+    document.getElementById("karaokeSong").textContent = "";
+    if (lastKaraokePhase !== "final") burstConfetti();
+  } else {
+    document.getElementById("karaokeEyebrow").textContent = "KARAOKE NIGHT";
+  }
+  lastKaraokePhase = s.phase;
+}
+let lastKaraokePhase = null;
+
+/* ===================== quiz ===================== */
+let quizCountdownInterval = null;
+let lastQuizStatus = null;
+
+async function renderQuiz(s) {
+  showScreen("scr-quiz");
+  document.getElementById("quizLeaderboard").innerHTML = "";
+  document.getElementById("quizFastest").textContent = "";
+
+  if (s.status === "idle" || s.status === "lobby" || !s.currentQuestionId) {
+    document.getElementById("quizQtext").textContent = s.status === "lobby" ? "Get ready!" : "Quiz starting soon";
+    document.getElementById("quizOptions").innerHTML = "";
+    document.getElementById("quizRingNum").textContent = "--";
+    if (quizCountdownInterval) clearInterval(quizCountdownInterval);
+    return;
+  }
+
+  if (s.status === "finished") {
+    if (quizCountdownInterval) clearInterval(quizCountdownInterval);
+    document.getElementById("quizEyebrow").textContent = "FINAL RESULTS";
+    document.getElementById("quizQtext").textContent = "";
+    document.getElementById("quizOptions").innerHTML = "";
+    document.getElementById("quizRingWrap").style.display = "none";
+    const qs = query(collection(db, "quiz_participants"), orderBy("totalScore", "desc"), limit(10));
+    const snap = await getDocs(qs);
+    const list = document.getElementById("quizLeaderboard");
+    let rank = 1;
+    snap.forEach(d => {
+      const data = d.data();
+      const li = document.createElement("li");
+      li.innerHTML = `<span>#${rank} ${data.name}</span><span class="mono">${data.totalScore || 0}</span>`;
+      list.appendChild(li);
+      rank++;
+    });
+    if (lastQuizStatus !== "finished") burstConfetti();
+    lastQuizStatus = s.status;
+    return;
+  }
+  document.getElementById("quizRingWrap").style.display = "flex";
+  document.getElementById("quizEyebrow").textContent = "QUIZ — QUESTION " + (s.batchNumber || "");
+
+  const qSnap = await getDoc(doc(db, "quiz_questions", s.currentQuestionId));
+  if (!qSnap.exists()) return;
+  const q = qSnap.data();
+  document.getElementById("quizQtext").textContent = q.text;
+
+  const optsEl = document.getElementById("quizOptions");
+  optsEl.innerHTML = "";
+  q.options.forEach((opt, idx) => {
+    const box = document.createElement("div");
+    box.className = "opt-box";
+    if (s.status === "question_ended" && idx === q.correctIndex) box.classList.add("correct");
+    box.textContent = opt;
+    optsEl.appendChild(box);
+  });
+
+  if (s.status === "running" && s.questionStartedAtMs) {
+    if (quizCountdownInterval) clearInterval(quizCountdownInterval);
+    const ring = document.getElementById("quizRingFg");
+    const circumference = 276;
+    const durMs = (s.durationSec || 15) * 1000;
+    function tick() {
+      const elapsed = Date.now() - s.questionStartedAtMs;
+      const remaining = Math.max(0, durMs - elapsed);
+      const pct = Math.max(0, Math.min(1, remaining / durMs));
+      ring.setAttribute("stroke-dashoffset", String(circumference * (1 - pct)));
+      document.getElementById("quizRingNum").textContent = Math.ceil(remaining / 1000);
+    }
+    tick();
+    quizCountdownInterval = setInterval(tick, 150);
+  }
+
+  if (s.status === "question_ended") {
+    if (quizCountdownInterval) clearInterval(quizCountdownInterval);
+    document.getElementById("quizRingNum").textContent = "✓";
+    if (s.lastResult && s.lastResult.fastestName) {
+      document.getElementById("quizFastest").textContent =
+        `⚡ Fastest correct: ${s.lastResult.fastestName} (${(s.lastResult.fastestTimeMs / 1000).toFixed(1)}s)`;
+    }
+  }
+  lastQuizStatus = s.status;
+}
+
+/* ===================== mode router ===================== */
+let activeModeUnsub = null;
+async function setup() {
+  await ensureAuth();
+  onSnapshot(doc(db, "state", "display"), async (snap) => {
+    const mode = snap.exists() ? snap.data().mode : "idle";
+    if (activeModeUnsub) { activeModeUnsub(); activeModeUnsub = null; }
+
+    if (mode === "lucky_draw") {
+      activeModeUnsub = onSnapshot(doc(db, "state", "lucky_draw"), s => { if (s.exists()) renderDraw(s.data()); });
+    } else if (mode === "karaoke") {
+      activeModeUnsub = onSnapshot(doc(db, "state", "karaoke"), s => { if (s.exists()) renderKaraoke(s.data()); });
+    } else if (mode === "quiz") {
+      activeModeUnsub = onSnapshot(doc(db, "state", "quiz"), s => { if (s.exists()) renderQuiz(s.data()); });
+    } else {
+      stopShuffle();
+      showScreen("scr-idle");
+    }
+  });
+}
+setup();
+</script>
+</body>
+</html>
