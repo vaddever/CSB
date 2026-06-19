@@ -32,6 +32,10 @@
     background: transparent; border: 1px solid var(--border); color: var(--text-muted);
   }
   .tab-btn.active { background: var(--surface-2); color: var(--text); border-color: var(--gold); }
+  .sub-tab {
+    background: transparent; border: 1px solid var(--border); color: var(--text-muted);
+  }
+  .sub-tab.active { background: var(--surface-2); color: var(--text); border-color: var(--teal); }
   .panel { display: none; }
   .panel.active { display: block; }
 
@@ -265,8 +269,8 @@
         <div class="card">
           <!-- Source sub-tabs -->
           <div class="row" style="margin-bottom:18px; gap:6px;">
-            <button class="btn tab-btn active" id="awardsTabPortal" style="font-size:13px; padding:8px 14px;">From voting portal</button>
-            <button class="btn tab-btn" id="awardsTabManual" style="font-size:13px; padding:8px 14px;">Add manually</button>
+            <button class="btn sub-tab active" id="awardsTabPortal" style="font-size:13px; padding:8px 14px;">From voting portal</button>
+            <button class="btn sub-tab" id="awardsTabManual" style="font-size:13px; padding:8px 14px;">Add manually</button>
           </div>
 
           <!-- Portal section -->
