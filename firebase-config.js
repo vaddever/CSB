@@ -9,19 +9,20 @@
 // script runs.
 
 window.FIREBASE_CONFIG = {
-  apiKey: "PASTE_YOUR_API_KEY",
-  authDomain: "PASTE_YOUR_PROJECT.firebaseapp.com",
-  projectId: "PASTE_YOUR_PROJECT_ID",
-  storageBucket: "PASTE_YOUR_PROJECT.appspot.com",
-  messagingSenderId: "PASTE_YOUR_SENDER_ID",
-  appId: "PASTE_YOUR_APP_ID"
+  apiKey: "AIzaSyCzMWPBDvl8l0MSwClyujz13N2M1H-YT4g",
+  authDomain: "event-manager-cda51.firebaseapp.com",
+  projectId: "event-manager-cda51",
+  storageBucket: "event-manager-cda51.firebasestorage.app",
+  messagingSenderId: "35004972816",
+  appId: "1:35004972816:web:d52b69bfbbb2d6f8ab2f95",
+  measurementId: "G-MQ5KT1BFE1"
 };
 
 // Simple passcode gate for admin.html. This is NOT real security —
 // anyone who reads this file can see it — it just keeps casual
 // attendees from wandering into the control panel. Change it before
 // the event, and don't reuse a sensitive password here.
-window.ADMIN_PASSCODE = "changeme2026";
+window.ADMIN_PASSCODE = "qwerty2296";
 
 // Event name shown across the screens.
-window.EVENT_NAME = "Staff Night 2026";
+window.EVENT_NAME = "CSB Gala Night 2026";
