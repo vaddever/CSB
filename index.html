@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CSB Gala Night 26</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Work+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ── reset & base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: #0b0e14;
+    color: #f4f1ea;
+    font-family: "Work Sans", sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── canvas stars ── */
+  #stars-canvas {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── hero ── */
+  .hero {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 20px 60px;
+    z-index: 1;
+  }
+  .hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 0%, rgba(232,184,75,0.18) 0%, transparent 65%),
+      radial-gradient(ellipse 50% 40% at 20% 100%, rgba(255,77,141,0.10) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 40% at 80% 100%, rgba(54,214,197,0.10) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  .eyebrow-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #e8b84b;
+    border: 1px solid rgba(232,184,75,0.35);
+    border-radius: 100px;
+    padding: 6px 16px;
+    margin-bottom: 32px;
+    animation: fadeUp 0.7s ease both;
+  }
+  .eyebrow-tag::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #e8b84b;
+    animation: pulse 1.4s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.2;} }
+
+  .hero-title {
+    font-family: "Bebas Neue", sans-serif;
+    font-size: clamp(64px, 15vw, 140px);
+    line-height: 0.92;
+    letter-spacing: 0.02em;
+    color: #f4f1ea;
+    animation: fadeUp 0.7s 0.1s ease both;
+  }
+  .hero-title .gold { color: #e8b84b; }
+  .hero-title .dim  { opacity: 0.22; }
+
+  .hero-sub {
+    font-size: clamp(14px, 2vw, 18px);
+    color: #8b93a7;
+    margin-top: 20px;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    animation: fadeUp 0.7s 0.2s ease both;
+  }
+
+  .hero-cta {
+    margin-top: 44px;
+    animation: fadeUp 0.7s 0.3s ease both;
+  }
+  .btn-hero {
+    display: inline-block;
+    background: #e8b84b;
+    color: #1a1505;
+    font-family: "Work Sans", sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    padding: 18px 48px;
+    border-radius: 100px;
+    text-decoration: none;
+    letter-spacing: 0.04em;
+    transition: transform 0.1s ease, box-shadow 0.2s ease;
+    box-shadow: 0 0 40px rgba(232,184,75,0.30);
+  }
+  .btn-hero:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 60px rgba(232,184,75,0.45);
+  }
+  .btn-hero:active { transform: scale(0.97); }
+
+  .scroll-hint {
+    position: absolute;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    color: #8b93a7;
+    font-size: 11px;
+    font-family: "JetBrains Mono", monospace;
+    letter-spacing: 0.1em;
+    animation: fadeUp 0.7s 0.6s ease both, bob 2s 1.5s ease-in-out infinite;
+  }
+  .scroll-hint svg { opacity: 0.5; }
+  @keyframes bob { 0%,100%{transform:translateX(-50%) translateY(0);} 50%{transform:translateX(-50%) translateY(6px);} }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── divider line ── */
+  .divider {
+    width: 1px;
+    height: 60px;
+    background: linear-gradient(to bottom, transparent, rgba(244,241,234,0.15), transparent);
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── activities section ── */
+  .activities {
+    position: relative;
+    z-index: 1;
+    padding: 0 20px 80px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .section-label {
+    text-align: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #8b93a7;
+    margin-bottom: 36px;
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+  }
+
+  .activity-card {
+    background: #141925;
+    border: 1px solid rgba(244,241,234,0.09);
+    border-radius: 20px;
+    padding: 32px 28px;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .activity-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    border-radius: inherit;
+  }
+  .activity-card:hover { transform: translateY(-4px); }
+
+  .activity-card.gold { --accent: #e8b84b; --glow: rgba(232,184,75,0.12); }
+  .activity-card.pink { --accent: #ff4d8d; --glow: rgba(255,77,141,0.12); }
+  .activity-card.teal { --accent: #36d6c5; --glow: rgba(54,214,197,0.12); }
+
+  .activity-card:hover { border-color: var(--accent); box-shadow: 0 0 40px var(--glow), inset 0 0 40px var(--glow); }
+
+  .card-icon {
+    font-size: 36px;
+    line-height: 1;
+  }
+  .card-num {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.12em;
+    opacity: 0.7;
+  }
+  .card-title {
+    font-family: "Bebas Neue", sans-serif;
+    font-size: 32px;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    line-height: 1;
+  }
+  .card-desc {
+    font-size: 14px;
+    color: #8b93a7;
+    line-height: 1.6;
+    flex: 1;
+  }
+  .card-link {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    opacity: 0.8;
+    transition: opacity 0.15s;
+  }
+  .card-link svg { transition: transform 0.15s ease; }
+  .activity-card:hover .card-link { opacity: 1; }
+  .activity-card:hover .card-link svg { transform: translateX(4px); }
+
+  /* ── bottom CTA strip ── */
+  .cta-strip {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    padding: 0 20px 100px;
+  }
+  .cta-strip h2 {
+    font-family: "Bebas Neue", sans-serif;
+    font-size: clamp(32px, 6vw, 56px);
+    letter-spacing: 0.04em;
+    margin-bottom: 12px;
+  }
+  .cta-strip p {
+    color: #8b93a7;
+    font-size: 15px;
+    margin-bottom: 32px;
+  }
+
+  /* ── floating check-in bar (mobile) ── */
+  .checkin-bar {
+    display: none;
+  }
+  @media (max-width: 640px) {
+    .checkin-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      padding: 14px 20px 28px;
+      background: linear-gradient(to top, #0b0e14 60%, transparent);
+      z-index: 100;
+    }
+    .checkin-bar a {
+      display: block;
+      width: 100%;
+      max-width: 400px;
+      background: #e8b84b;
+      color: #1a1505;
+      font-weight: 700;
+      font-size: 16px;
+      text-align: center;
+      padding: 17px;
+      border-radius: 14px;
+      text-decoration: none;
+      box-shadow: 0 0 40px rgba(232,184,75,0.35);
+    }
+  }
+
+  /* ── footer ── */
+  footer {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    padding: 28px 20px;
+    border-top: 1px solid rgba(244,241,234,0.07);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: rgba(139,147,167,0.5);
+    letter-spacing: 0.08em;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="stars-canvas"></canvas>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="eyebrow-tag">CSB · Gala Night · 2026</div>
+  <h1 class="hero-title">
+    <span class="dim">GALA</span><br>
+    <span class="gold">NIGHT</span><br>
+    <span>26</span>
+  </h1>
+  <p class="hero-sub">Lucky Draw · Karaoke · Quiz Night</p>
+  <div class="hero-cta">
+    <a href="register.html" class="btn-hero">Check in &amp; get your pass →</a>
+  </div>
+
+  <div class="scroll-hint">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+    scroll
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- Activities -->
+<section class="activities">
+  <p class="section-label">Tonight's lineup</p>
+  <div class="cards">
+
+    <div class="activity-card gold">
+      <div class="card-num">01 / LUCKY DRAW</div>
+      <div class="card-icon">🎰</div>
+      <div class="card-title">Lucky Draw</div>
+      <p class="card-desc">Names shuffle on the big screen. Will yours be the one that stops? Multiple rounds, one winner each time — past winners are excluded.</p>
+      <div class="card-link">
+        Included when you check in
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </div>
+    </div>
+
+    <a href="karaoke-vote.html" class="activity-card pink">
+      <div class="card-num">02 / KARAOKE NIGHT</div>
+      <div class="card-icon">🎤</div>
+      <div class="card-title">Karaoke Night</div>
+      <p class="card-desc">Paired up, handed a song, and pushed onto the stage. The audience scores every pair on performance and singing — highest combined wins.</p>
+      <div class="card-link">
+        Open voting screen
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </div>
+    </a>
+
+    <a href="quiz-play.html" class="activity-card teal">
+      <div class="card-num">03 / QUIZ NIGHT</div>
+      <div class="card-icon">🧠</div>
+      <div class="card-title">Quiz Night</div>
+      <p class="card-desc">Questions hit everyone's screen at the same time. Correct answers score — but the faster you tap the right one, the more points you get.</p>
+      <div class="card-link">
+        Open quiz screen
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </div>
+    </a>
+
+  </div>
+</section>
+
+<!-- Bottom CTA -->
+<section class="cta-strip">
+  <h2>Ready for the night?</h2>
+  <p>Scan in at the door, get your pass, and you're all set for every activity.</p>
+  <a href="register.html" class="btn-hero">Check in now →</a>
+</section>
+
+<!-- Mobile floating bar -->
+<div class="checkin-bar">
+  <a href="register.html">Check in &amp; get your pass →</a>
+</div>
+
+<footer>CSB GALA NIGHT 26 &nbsp;·&nbsp; All rights reserved</footer>
+
+<script>
+const canvas = document.getElementById("stars-canvas");
+const ctx = canvas.getContext("2d");
+let stars = [];
+let W, H;
+
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+
+function makeStars(n) {
+  stars = [];
+  for (let i = 0; i < n; i++) {
+    stars.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() * 1.2 + 0.2,
+      o: Math.random() * 0.6 + 0.1,
+      speed: Math.random() * 0.008 + 0.003,
+      phase: Math.random() * Math.PI * 2
+    });
+  }
+}
+
+function draw(t) {
+  ctx.clearRect(0, 0, W, H);
+  stars.forEach(s => {
+    const flicker = s.o * (0.7 + 0.3 * Math.sin(t * s.speed * 60 + s.phase));
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(244,241,234,${flicker})`;
+    ctx.fill();
+  });
+  requestAnimationFrame(draw);
+}
+
+resize();
+makeStars(220);
+window.addEventListener("resize", () => { resize(); makeStars(220); });
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
